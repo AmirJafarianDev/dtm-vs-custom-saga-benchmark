@@ -1,0 +1,111 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "id": 1,
+      "title": "P95 Transaction Latency (DTM vs Custom Saga)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "histogram_quantile(0.95, sum(rate(transaction_duration_seconds_bucket[1m])) by (le, orchestrator_type))",
+          "legendFormat": "{{orchestrator_type}} (P95)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2
+          }
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "id": 2,
+      "title": "Throughput: Transactions Per Second (RPS)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "sum(rate(transaction_duration_seconds_count[1m])) by (orchestrator_type, status)",
+          "legendFormat": "{{orchestrator_type}} - {{status}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "lineWidth": 2
+          }
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "id": 3,
+      "title": "Average Transaction Latency",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "sum(rate(transaction_duration_seconds_sum[1m])) by (orchestrator_type) / sum(rate(transaction_duration_seconds_count[1m])) by (orchestrator_type)",
+          "legendFormat": "{{orchestrator_type}} (Avg)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2
+          }
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "id": 4,
+      "title": "Total Transaction Count by Outcome",
+      "type": "bargauge",
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "sum(transaction_duration_seconds_count) by (orchestrator_type, status)",
+          "legendFormat": "{{orchestrator_type}} - {{status}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        }
+      }
+    }
+  ],
+  "refresh": "2s",
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["saga", "dtm", "benchmark", "nestjs"],
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Saga Orchestration Benchmark: DTM vs Custom Saga",
+  "uid": "saga-benchmark-dashboard",
+  "version": 1
+}

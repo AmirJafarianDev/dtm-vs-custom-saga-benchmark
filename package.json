@@ -1,0 +1,25 @@
+{
+  "name": "data-consistent-microservices",
+  "version": "1.0.0",
+  "description": "Benchmark and comparison of DTM and Custom Saga distributed transactions in NestJS microservices",
+  "private": true,
+  "scripts": {
+    "docker:up": "docker compose up -d --build",
+    "docker:down": "docker compose down -v",
+    "docker:logs": "docker compose logs -f",
+    "test:k6:success": "k6 run k6/success_test.js",
+    "test:k6:compensation": "k6 run k6/compensation_test.js"
+  },
+  "keywords": [
+    "nestjs",
+    "microservices",
+    "saga-pattern",
+    "dtm",
+    "distributed-transactions",
+    "prometheus",
+    "grafana",
+    "k6"
+  ],
+  "author": "",
+  "license": "ISC"
+}

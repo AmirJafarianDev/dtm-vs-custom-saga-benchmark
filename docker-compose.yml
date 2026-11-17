@@ -1,0 +1,227 @@
+services:
+  # ==========================================
+  # 1. Product Database (Isolated)
+  # ==========================================
+  postgres-product:
+    image: postgres:15-alpine
+    container_name: postgres-product
+    environment:
+      POSTGRES_DB: product_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5442:5432"
+    volumes:
+      - ./docker/init-db/product:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d product_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks:
+      - saga-network
+
+  # ==========================================
+  # 2. Order Database (Isolated)
+  # ==========================================
+  postgres-order:
+    image: postgres:15-alpine
+    container_name: postgres-order
+    environment:
+      POSTGRES_DB: order_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5443:5432"
+    volumes:
+      - ./docker/init-db/order:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d order_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks:
+      - saga-network
+
+  # ==========================================
+  # 3. Payment Database (Isolated)
+  # ==========================================
+  postgres-payment:
+    image: postgres:15-alpine
+    container_name: postgres-payment
+    environment:
+      POSTGRES_DB: payment_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5444:5432"
+    volumes:
+      - ./docker/init-db/payment:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d payment_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks:
+      - saga-network
+
+  # ==========================================
+  # 4. Method A Orchestrator: DTM Server
+  # ==========================================
+  dtm:
+    image: yedf/dtm:latest
+    container_name: dtm-server
+    environment:
+      - DTM_HTTP_PORT=36789
+      - DTM_GRPC_PORT=36790
+    ports:
+      - "36789:36789"
+      - "36790:36790"
+    networks:
+      - saga-network
+
+  # ==========================================
+  # 5. Product Microservice
+  # ==========================================
+  product-service:
+    build:
+      context: ./services/product-service
+      dockerfile: Dockerfile
+    container_name: product-service
+    environment:
+      PORT: 3001
+      DB_HOST: postgres-product
+      DB_PORT: 5432
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: product_db
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres-product:
+        condition: service_healthy
+    networks:
+      - saga-network
+
+  # ==========================================
+  # 6. Payment Microservice
+  # ==========================================
+  payment-service:
+    build:
+      context: ./services/payment-service
+      dockerfile: Dockerfile
+    container_name: payment-service
+    environment:
+      PORT: 3003
+      DB_HOST: postgres-payment
+      DB_PORT: 5432
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: payment_db
+    ports:
+      - "3003:3003"
+    depends_on:
+      postgres-payment:
+        condition: service_healthy
+    networks:
+      - saga-network
+
+  # ==========================================
+  # 7. Order Microservice (Custom Saga & DTM entrypoint)
+  # ==========================================
+  order-service:
+    build:
+      context: ./services/order-service
+      dockerfile: Dockerfile
+    container_name: order-service
+    environment:
+      PORT: 3002
+      DB_HOST: postgres-order
+      DB_PORT: 5432
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: order_db
+      PRODUCT_SERVICE_URL: http://product-service:3001
+      PAYMENT_SERVICE_URL: http://payment-service:3003
+      DTM_SERVER_URL: http://dtm:36789
+    ports:
+      - "3002:3002"
+    depends_on:
+      postgres-order:
+        condition: service_healthy
+      product-service:
+        condition: service_started
+      payment-service:
+        condition: service_started
+      dtm:
+        condition: service_started
+    networks:
+      - saga-network
+
+  # ==========================================
+  # 8. Prometheus Monitoring
+  # ==========================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-remote-write-receiver'
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    networks:
+      - saga-network
+
+  # ==========================================
+  # 9. Grafana Dashboards
+  # ==========================================
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/etc/grafana/provisioning/dashboards/saga_benchmark.json
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+    depends_on:
+      - prometheus
+    networks:
+      - saga-network
+
+  # ==========================================
+  # 10. K6 Benchmark Runner (Optional Profile)
+  # ==========================================
+  k6:
+    image: grafana/k6:latest
+    profiles:
+      - benchmark
+    volumes:
+      - ./k6:/scripts
+    environment:
+      - K6_PROMETHEUS_RW_SERVER_URL=http://prometheus:9090/api/v1/write
+      - K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM=true
+      - BASE_URL=http://order-service:3002
+      - ORCHESTRATOR=custom
+    networks:
+      - saga-network
+
+networks:
+  saga-network:
+    driver: bridge
+
+volumes:
+  prometheus_data:

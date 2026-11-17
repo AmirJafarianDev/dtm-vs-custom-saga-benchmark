@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: 'Saga Benchmark Dashboards'
+    orgId: 1
+    folder: 'Distributed Transactions'
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /etc/grafana/provisioning/dashboards
